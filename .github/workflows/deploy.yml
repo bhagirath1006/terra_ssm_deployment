@@ -16,25 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Get AWS credentials from Vault
-        id: vault
-        uses: hashicorp/vault-action@v2
-        if: ${{ secrets.VAULT_ADDR != '' }}
-        with:
-          url: ${{ secrets.VAULT_ADDR }}
-          method: jwt
-          jwtGithubAudience: ${{ secrets.VAULT_ADDR }}
-          role: github-actions
-          path: jwt
-          secrets: |
-            secret/data/aws/credentials access_key;
-            secret/data/aws/credentials secret_key
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID || env.access_key }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY || env.secret_key }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
