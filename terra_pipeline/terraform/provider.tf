@@ -8,13 +8,5 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
-}
-
-variable "instance_type" {
-  default = "t2.micro"
-}
-
-variable "project_name" {
-  default = "portfolio"
+  region = "ap-south-1"
 }

@@ -1,9 +1,4 @@
 terraform {
-  backend "s3" {
-    bucket         = "portfolio-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
-  }
+  # Local state for now
+  # To use S3, create bucket first with: aws s3 mb s3://portfolio-terraform-state --region ap-south-1
 }
