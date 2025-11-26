@@ -1,0 +1,80 @@
+name: Deploy Portfolio
+
+on:
+  push:
+    branches: [main, develop]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: portfolio-repo
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      # Get Vault secrets
+      - uses: hashicorp/vault-action@v2
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: jwt
+          jwtGithubAudience: ${{ secrets.VAULT_ADDR }}
+          role: github-actions
+          path: jwt
+          secrets: |
+            secret/data/aws/credentials access_key;
+            secret/data/aws/credentials secret_key
+
+      # Configure AWS
+      - uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ env.access_key }}
+          aws-secret-access-key: ${{ env.secret_key }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Login to ECR
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      # Build and push image
+      - name: Build and push Docker
+        run: |
+          docker build -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:latest -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }} ./portfolio
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }}
+
+      # Get EC2 instance ID
+      - name: Get instance ID
+        id: instance
+        run: |
+          INSTANCE=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=portfolio-server" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          echo "id=$INSTANCE" >> $GITHUB_OUTPUT
+
+      # Stop old container via SSM
+      - name: Stop old container
+        if: steps.instance.outputs.id != 'None'
+        run: |
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ steps.instance.outputs.id }}" \
+            --parameters 'commands=["docker stop portfolio-container 2>/dev/null || true"]' \
+            --region ${{ env.AWS_REGION }} \
+            --output text
+
+      # Deploy new container via SSM
+      - name: Deploy container
+        if: steps.instance.outputs.id != 'None'
+        run: |
+          ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ steps.instance.outputs.id }}" \
+            --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",\"docker pull $ECR_URL:latest\",\"docker run -d --name portfolio-container -p 80:${{ env.APP_PORT }} $ECR_URL:latest\"]" \
+            --region ${{ env.AWS_REGION }} \
+            --output text
+
+      - name: Deployment complete
+        run: echo "Portfolio deployed successfully to EC2!"
