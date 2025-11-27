@@ -1,64 +1,93 @@
 name: Deploy Portfolio
+
 on:
   push:
-    branches: [main]
+    branches: [main, develop, feature/bhagirath]
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPO: portfolio-repo
+  APP_PORT: 3000
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.0
-
-      - name: Terraform Init
-        run: cd terra_pipeline/terraform && terraform init
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Terraform Destroy
-        run: cd terra_pipeline/terraform && terraform destroy -auto-approve
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Terraform Apply
-        run: cd terra_pipeline/terraform && terraform apply -auto-approve
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Get Instance ID
-        id: tf
-        run: |
-          cd terra_pipeline/terraform
-          INSTANCE_ID=$(terraform output -raw instance_id)
-          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
-          echo "Instance ID: $INSTANCE_ID"
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      # Configure AWS (using GitHub Secrets)
+      - uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Wait for Instance
-        run: sleep 60
+      # Setup Terraform
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
 
-      - name: Deploy to EC2 via SSM
+      # Terraform Init
+      - name: Terraform Init
+        working-directory: terra_pipeline/terraform
+        run: terraform init
+
+      # Terraform Destroy (cleanup old resources)
+      - name: Terraform Destroy
+        working-directory: terra_pipeline/terraform
+        run: terraform destroy -auto-approve || true
+
+      # Terraform Apply
+      - name: Terraform Apply
+        working-directory: terra_pipeline/terraform
+        run: terraform apply -auto-approve
+
+      # Get EC2 Instance ID
+      - name: Get instance ID
+        id: instance
+        working-directory: terra_pipeline/terraform
+        run: |
+          unset TF_LOG
+          unset TF_LOG_PATH
+          INSTANCE_ID=$(terraform output -raw instance_id 2>/dev/null | tr -d '\n' | tr -d '\r')
+          echo "id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+      # Login to ECR
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      # Build and push Docker image
+      - name: Build and push Docker
+        run: |
+          ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
+          docker build -t $ECR_URL:latest -t $ECR_URL:${{ github.sha }} ./portfolio
+          docker push $ECR_URL:latest
+          docker push $ECR_URL:${{ github.sha }}
+
+      # Stop old container via SSM
+      - name: Stop old container
+        if: steps.instance.outputs.id != ''
         run: |
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --instance-ids "${{ steps.tf.outputs.instance_id }}" \
-            --parameters 'commands=["cd /tmp","rm -rf portfolio-app || true","git clone https://github.com/bhagirath1006/terra_ssm_deployment.git portfolio-app","cd portfolio-app/terra_pipeline/portfolio","docker build -t portfolio .","docker stop portfolio-container || true","docker rm portfolio-container || true","docker run -d --name portfolio-container -p 80:3000 portfolio"]' \
-            --region ap-south-1
+            --instance-ids "${{ steps.instance.outputs.id }}" \
+            --parameters 'commands=["docker stop portfolio-container 2>/dev/null || true"]' \
+            --region ${{ env.AWS_REGION }} \
+            --output text
 
-      - run: echo "Deployment complete!"
+      # Deploy new container via SSM
+      - name: Deploy container
+        if: steps.instance.outputs.id != ''
+        run: |
+          ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ steps.instance.outputs.id }}" \
+            --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_URL\",\"docker pull $ECR_URL:latest\",\"docker run -d --name portfolio-container -p 80:${{ env.APP_PORT }} $ECR_URL:latest\"]" \
+            --region ${{ env.AWS_REGION }} \
+            --output text
+
+      - name: Deployment complete
+        run: echo "Portfolio deployed successfully to EC2!"
