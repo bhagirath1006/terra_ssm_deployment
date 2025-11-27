@@ -62,7 +62,7 @@ jobs:
       - name: Build and push Docker
         run: |
           ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
-          docker build -t $ECR_URL:latest -t $ECR_URL:${{ github.sha }} ./portfolio
+          docker build -t $ECR_URL:latest -t $ECR_URL:${{ github.sha }} ./terra_pipeline/portfolio
           docker push $ECR_URL:latest
           docker push $ECR_URL:${{ github.sha }}
 
