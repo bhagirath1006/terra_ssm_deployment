@@ -108,6 +108,18 @@ resource "aws_iam_role_policy" "ec2_policy" {
   })
 }
 
+# ECR Repository
+resource "aws_ecr_repository" "portfolio" {
+  name                 = var.ecr_repo_name
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = false
+  }
+
+  tags = var.tags
+}
+
 # SSM for Systems Manager access
 resource "aws_iam_role_policy_attachment" "ssm" {
   role       = aws_iam_role.ec2.name

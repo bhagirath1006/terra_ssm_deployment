@@ -34,6 +34,10 @@ variable "ecr_tag_immutability" {
   default = "MUTABLE"
 }
 
+variable "ecr_repo_name" {
+  default = "portfolio-repo"
+}
+
 variable "aws_region" {
   default = "us-east-1"
 }
