@@ -64,17 +64,6 @@ jobs:
           docker push $ECR_URL:latest
           docker push $ECR_URL:${{ github.sha }}
 
-      # Stop old container via SSM
-      - name: Stop old container
-        if: steps.instance.outputs.id != ''
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --instance-ids "${{ steps.instance.outputs.id }}" \
-            --parameters 'commands=["docker stop portfolio-container 2>/dev/null || true"]' \
-            --region ${{ env.AWS_REGION }} \
-            --output text
-
       # Deploy new container via SSM
       - name: Deploy container
         if: steps.instance.outputs.id != ''
@@ -83,7 +72,7 @@ jobs:
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --instance-ids "${{ steps.instance.outputs.id }}" \
-            --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_URL\",\"docker pull $ECR_URL:latest\",\"docker run -d --name portfolio-container -p 80:${{ env.APP_PORT }} $ECR_URL:latest\"]" \
+            --parameters "commands=[\"docker stop portfolio-container 2>/dev/null || true\",\"docker rm portfolio-container 2>/dev/null || true\",\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_URL\",\"docker pull $ECR_URL:latest\",\"docker run -d --name portfolio-container -p 80:${{ env.APP_PORT }} $ECR_URL:latest\"]" \
             --region ${{ env.AWS_REGION }} \
             --output text
 
