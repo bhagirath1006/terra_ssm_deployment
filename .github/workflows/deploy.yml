@@ -49,9 +49,10 @@ jobs:
         working-directory: terra_pipeline/terraform
         run: |
           unset TF_LOG TF_LOG_PATH
-          terraform output -raw instance_id > /tmp/instance_id.txt 2>&1
-          INSTANCE_ID=$(cat /tmp/instance_id.txt | tail -1 | tr -d '\n' | tr -d '\r')
+          terraform output -raw instance_id 2>/dev/null > /tmp/instance_id.txt
+          INSTANCE_ID=$(cat /tmp/instance_id.txt | grep -oE 'i-[a-z0-9]{17}|i-[a-z0-9]{8}' | head -1)
           echo "id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Extracted Instance ID: $INSTANCE_ID"
 
       # Login to ECR
       - name: Login to ECR
