@@ -9,6 +9,34 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        run: cd terra_pipeline/terraform && terraform init
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Terraform Apply
+        run: cd terra_pipeline/terraform && terraform apply -auto-approve
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Get Instance ID
+        id: tf
+        run: |
+          cd terra_pipeline/terraform
+          INSTANCE_ID=$(terraform output -raw instance_id)
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Instance ID: $INSTANCE_ID"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -16,12 +44,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      - name: Wait for Instance
+        run: sleep 30
+
       - name: Deploy to EC2 via SSM
         run: |
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --instance-ids "i-008fba951960f93f2" \
+            --instance-ids "${{ steps.tf.outputs.instance_id }}" \
             --parameters 'commands=["cd /tmp","rm -rf portfolio-app || true","git clone https://github.com/bhagirath1006/terra_ssm_deployment.git portfolio-app","cd portfolio-app/terra_pipeline/portfolio","docker build -t portfolio .","docker stop portfolio-container || true","docker rm portfolio-container || true","docker run -d --name portfolio-container -p 80:3000 portfolio"]' \
             --region ap-south-1
 
-      - run: echo "Deployment complete - http://13.202.68.247"
+      - run: echo "Deployment complete!"
