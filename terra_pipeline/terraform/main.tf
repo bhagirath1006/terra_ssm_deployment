@@ -8,9 +8,16 @@ data "aws_ami" "linux" {
   }
 }
 
+# Generate random suffix for unique names
+resource "random_string" "suffix" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
 # Security Group
 resource "aws_security_group" "web" {
-  name = "${var.project_name}-sg"
+  name = "${var.project_name}-sg-${random_string.suffix.result}"
 
   ingress {
     description = "SSH Access"
@@ -62,7 +69,7 @@ resource "aws_security_group" "web" {
 
 # IAM Role for EC2
 resource "aws_iam_role" "ec2" {
-  name = "${var.project_name}-role"
+  name = "${var.project_name}-role-${random_string.suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -110,7 +117,7 @@ resource "aws_iam_role_policy" "ec2_policy" {
 
 # ECR Repository
 resource "aws_ecr_repository" "portfolio" {
-  name                 = var.ecr_repo_name
+  name                 = "${var.ecr_repo_name}-${random_string.suffix.result}"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
