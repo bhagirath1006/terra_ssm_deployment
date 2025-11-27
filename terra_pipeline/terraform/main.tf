@@ -120,23 +120,6 @@ resource "aws_iam_instance_profile" "ec2" {
   role = aws_iam_role.ec2.name
 }
 
-# ECR Repository
-resource "aws_ecr_repository" "repo" {
-  name                 = "${var.project_name}-repo"
-  image_tag_mutability = var.ecr_tag_immutability
-
-  image_scanning_configuration {
-    scan_on_push = var.enable_image_scanning
-  }
-
-  tags = merge(
-    var.tags,
-    {
-      Name = "${var.project_name}-repo"
-    }
-  )
-}
-
 # EC2 Instance
 resource "aws_instance" "web" {
   ami                    = data.aws_ami.linux.id
