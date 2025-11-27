@@ -135,7 +135,7 @@ resource "aws_iam_role_policy_attachment" "ssm" {
 
 # Instance Profile
 resource "aws_iam_instance_profile" "ec2" {
-  name = "${var.project_name}-profile"
+  name = "${var.project_name}-profile-${random_string.suffix.result}"
   role = aws_iam_role.ec2.name
 }
 
