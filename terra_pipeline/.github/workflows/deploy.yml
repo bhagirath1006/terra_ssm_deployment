@@ -48,9 +48,8 @@ jobs:
         id: instance
         working-directory: terra_pipeline/terraform
         run: |
-          INSTANCE_ID=$(terraform output -raw instance_id 2>/dev/null)
-          echo "Instance ID: $INSTANCE_ID"
-          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          INSTANCE_ID=$(terraform output -raw instance_id)
+          echo "id=$INSTANCE_ID" >> $GITHUB_OUTPUT
 
       # Login to ECR
       - name: Login to ECR
@@ -67,23 +66,23 @@ jobs:
 
       # Stop old container via SSM
       - name: Stop old container
-        if: steps.instance.outputs.instance_id != ''
+        if: steps.instance.outputs.id != ''
         run: |
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --instance-ids "${{ steps.instance.outputs.instance_id }}" \
+            --instance-ids "${{ steps.instance.outputs.id }}" \
             --parameters 'commands=["docker stop portfolio-container 2>/dev/null || true"]' \
             --region ${{ env.AWS_REGION }} \
             --output text
 
       # Deploy new container via SSM
       - name: Deploy container
-        if: steps.instance.outputs.instance_id != ''
+        if: steps.instance.outputs.id != ''
         run: |
           ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --instance-ids "${{ steps.instance.outputs.instance_id }}" \
+            --instance-ids "${{ steps.instance.outputs.id }}" \
             --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_URL\",\"docker pull $ECR_URL:latest\",\"docker run -d --name portfolio-container -p 80:${{ env.APP_PORT }} $ECR_URL:latest\"]" \
             --region ${{ env.AWS_REGION }} \
             --output text
