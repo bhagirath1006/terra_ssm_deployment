@@ -10,7 +10,7 @@ data "aws_ami" "linux" {
 
 # Security Group
 resource "aws_security_group" "web" {
-  name = "${var.project_name}-sg-${formatdate("YYYYMMDD-hhmm", timestamp())}"
+  name = "${var.project_name}-sg"
 
   ingress {
     description = "SSH Access"
@@ -62,7 +62,7 @@ resource "aws_security_group" "web" {
 
 # IAM Role for EC2
 resource "aws_iam_role" "ec2" {
-  name = "${var.project_name}-role-${formatdate("YYYYMMDD-hhmm", timestamp())}"
+  name = "${var.project_name}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
