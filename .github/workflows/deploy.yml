@@ -49,7 +49,8 @@ jobs:
         working-directory: terra_pipeline/terraform
         run: |
           unset TF_LOG TF_LOG_PATH
-          INSTANCE_ID=$(terraform output -raw instance_id | tr -d '\n' | tr -d '\r')
+          terraform output -raw instance_id > /tmp/instance_id.txt 2>&1
+          INSTANCE_ID=$(cat /tmp/instance_id.txt | tail -1 | tr -d '\n' | tr -d '\r')
           echo "id=$INSTANCE_ID" >> $GITHUB_OUTPUT
 
       # Login to ECR
