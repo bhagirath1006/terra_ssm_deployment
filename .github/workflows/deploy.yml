@@ -47,12 +47,10 @@ jobs:
       - name: Get instance ID
         id: instance
         working-directory: terra_pipeline/terraform
-        env:
-          TF_LOG:
         run: |
-          INSTANCE_ID=$(terraform output -json instance_id | jq -r '.')
-          INSTANCE_ID=$(echo "$INSTANCE_ID" | xargs)
+          INSTANCE_ID=$(terraform output instance_id 2>/dev/null | sed 's/"//g' | tr -d ' ')
           echo "id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Instance ID: $INSTANCE_ID"
 
       # Login to ECR
       - name: Login to ECR
